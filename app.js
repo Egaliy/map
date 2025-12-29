@@ -226,6 +226,63 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// Вычисление времени полета (средняя скорость самолета ~850 км/ч)
+function calculateFlightTime(distanceKm) {
+    const avgSpeed = 850; // км/ч
+    const hours = distanceKm / avgSpeed;
+    if (hours < 1) {
+        return Math.round(hours * 60) + ' мин';
+    }
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    if (m === 0) {
+        return h + ' ч';
+    }
+    return h + ' ч ' + m + ' мин';
+}
+
+// Получение IATA кода города (упрощенная версия)
+function getCityIATA(cityName) {
+    // Простой маппинг популярных городов
+    const cityMap = {
+        'москва': 'MOW',
+        'санкт-петербург': 'LED',
+        'новосибирск': 'OVB',
+        'екатеринбург': 'SVX',
+        'казань': 'KZN',
+        'нижний новгород': 'GOJ',
+        'челябинск': 'CEK',
+        'самара': 'KUF',
+        'омск': 'OMS',
+        'ростов-на-дону': 'ROV',
+        'уфа': 'UFA',
+        'красноярск': 'KJA',
+        'воронеж': 'VOZ',
+        'пермь': 'PEE',
+        'волгоград': 'VOG'
+    };
+    return cityMap[cityName.toLowerCase()] || cityName.toUpperCase().substring(0, 3);
+}
+
+// Получение минимальной цены билета (примерная на основе расстояния)
+// Для реального использования нужен API ключ от Aviasales
+function getFlightPrice(distanceKm) {
+    // Примерная цена: ~50 рублей за км (очень приблизительно)
+    // В реальном приложении здесь должен быть запрос к Aviasales API
+    if (distanceKm > 0) {
+        return Math.round(distanceKm * 50);
+    }
+    return 0;
+}
+
+// Создание ссылки на Aviasales
+function createAviasalesLink(origin, destination) {
+    const originCode = getCityIATA(origin);
+    const destCode = getCityIATA(destination);
+    // Партнерская ссылка Aviasales
+    return `https://www.aviasales.ru/search/${originCode}${destCode}?marker=your_marker_id`;
+}
+
 // Поиск ближайшего города к средней точке
 function findNearestCity(avgLocation, cities) {
     if (cities.length === 0) return null;
@@ -268,7 +325,7 @@ async function addCity(cityNameToAdd = null) {
             emptyMsg.remove();
         }
         
-        renderCitiesList();
+        await renderCitiesList();
         
         // Если это первый город, показываем карту сразу
         if (cities.length === 1) {
@@ -346,7 +403,7 @@ function getCityStats() {
 }
 
 // Отображение списка городов
-function renderCitiesList() {
+async function renderCitiesList() {
     const citiesList = document.getElementById('citiesList');
     
     if (cities.length === 0) {
@@ -356,19 +413,67 @@ function renderCitiesList() {
     
     const stats = getCityStats();
     
-    citiesList.innerHTML = stats.map((stat, index) => `
+        // Вычисляем ближайший город для расчета расстояний
+        let nearestCity = null;
+        if (cities.length > 0) {
+            if (cities.length > 1) {
+                const avgLocation = calculateAverageLocation(cities);
+                nearestCity = findNearestCity(avgLocation, cities);
+            } else {
+                nearestCity = cities[0];
+            }
+        }
+    
+    let html = '';
+    for (const stat of stats) {
+        let distance = 0;
+        let flightTime = '';
+        let price = null;
+        
+        if (nearestCity && stat.city.name !== nearestCity.name) {
+            distance = calculateDistance(
+                nearestCity.lat, nearestCity.lon,
+                stat.city.lat, stat.city.lon
+            );
+            flightTime = calculateFlightTime(distance);
+            
+            // Вычисляем примерную цену на основе расстояния
+            price = getFlightPrice(distance);
+        }
+        
+        const aviasalesLink = nearestCity 
+            ? createAviasalesLink(nearestCity.name, stat.name)
+            : '#';
+        
+        html += `
         <div class="city-item">
-            <div>
-                <span class="city-name">${stat.name}</span>
-                ${stat.count > 1 ? `<span class="city-count">×${stat.count}</span>` : ''}
-                <span class="city-coords">(${stat.city.lat.toFixed(4)}, ${stat.city.lon.toFixed(4)})</span>
+            <div class="city-main-info">
+                <div class="city-header">
+                    <span class="city-name">${stat.name}</span>
+                    ${stat.count > 1 ? `<span class="city-count">×${stat.count}</span>` : ''}
+                </div>
+                ${distance > 0 ? `
+                    <div class="city-details">
+                        <span class="city-distance">${distance.toFixed(0)} км</span>
+                        <span class="city-flight-time">${flightTime}</span>
+                    </div>
+                ` : ''}
+                ${price > 0 ? `
+                    <div class="city-price">от ${price.toLocaleString('ru-RU')} ₽</div>
+                ` : ''}
             </div>
             <div class="city-actions">
+                ${distance > 0 ? `
+                    <a href="${aviasalesLink}" target="_blank" class="buy-ticket-btn">Купить билет</a>
+                ` : ''}
                 <button class="add-more-btn" onclick="addCityAgain('${stat.name}')" title="Добавить еще раз">+</button>
                 <button class="remove-btn" onclick="removeCityByName('${stat.name}')">Удалить</button>
             </div>
         </div>
-    `).join('');
+        `;
+    }
+    
+    citiesList.innerHTML = html;
 }
 
 // Добавление того же города еще раз
@@ -377,14 +482,14 @@ async function addCityAgain(cityName) {
 }
 
 // Удаление города по имени (удаляет одно вхождение)
-function removeCityByName(cityName) {
+async function removeCityByName(cityName) {
     const index = cities.findIndex(c => c.name.toLowerCase() === cityName.toLowerCase());
     if (index === -1) return;
     
     // Удаляем город из массива
     cities.splice(index, 1);
     
-    renderCitiesList();
+    await     await renderCitiesList();
     
     // Обновляем все маркеры городов
     if (cities.length > 0) {
@@ -492,14 +597,14 @@ async function calculateAverage() {
 }
 
 // Очистка всех данных
-function clearAll() {
+async function clearAll() {
     cities = [];
     cityMarkers.forEach(marker => map.removeLayer(marker));
     cityMarkers = [];
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
     
-    renderCitiesList();
+    await renderCitiesList();
     document.getElementById('resultSection').style.display = 'none';
     document.getElementById('cityInput').value = '';
     
@@ -514,7 +619,7 @@ async function loadSavedData() {
     const savedCities = loadCitiesFromCookie();
     if (savedCities && savedCities.length > 0) {
         cities = savedCities;
-        renderCitiesList();
+        await renderCitiesList();
         
         // Инициализируем карту с первым городом
         if (cities.length > 0) {
