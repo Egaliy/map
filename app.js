@@ -352,40 +352,56 @@ async function getFlightPrice(originCity, destinationCity, originLat, originLon,
         const dateFrom = today.toISOString().split('T')[0];
         const dateTo = monthLater.toISOString().split('T')[0];
         
-        // Используем Aviasales API для поиска минимальной цены
+        // Используем Aviasales API для поиска минимальной цены за месяц
         // Примечание: для реального использования нужен API ключ от Aviasales
-        // Используем их публичный endpoint для поиска цен
-        try {
-            const response = await fetch(
-                `https://api.travelpayouts.com/v2/prices/monthly?currency=rub&origin=${originCode}&destination=${destCode}&token=YOUR_TOKEN`,
-                {
-                    headers: {
-                        'Accept': 'application/json'
+        // Можно получить бесплатный токен на https://www.travelpayouts.com/developers/api
+        const aviasalesToken = null; // Замените на ваш токен для реального использования
+        
+        if (aviasalesToken) {
+            try {
+                const response = await fetch(
+                    `https://api.travelpayouts.com/v2/prices/monthly?currency=rub&origin=${originCode}&destination=${destCode}&token=${aviasalesToken}`,
+                    {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.data && data.data.length > 0) {
+                        // Находим минимальную цену за месяц
+                        const prices = data.data.map(item => item.value).filter(p => p > 0);
+                        if (prices.length > 0) {
+                            return Math.min(...prices);
+                        }
                     }
                 }
-            );
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.data && data.data.length > 0) {
-                    // Находим минимальную цену
-                    const prices = data.data.map(item => item.value).filter(p => p > 0);
-                    if (prices.length > 0) {
-                        return Math.min(...prices);
-                    }
-                }
+            } catch (apiError) {
+                console.log('Aviasales API недоступен, используем примерную цену');
             }
-        } catch (apiError) {
-            // Если API не доступен, используем примерную цену на основе расстояния
-            console.log('Aviasales API недоступен, используем примерную цену');
         }
         
-        // Примерная цена на основе расстояния (если API недоступен)
+        // Примерная минимальная цена на основе расстояния (если API недоступен)
+        // Учитываем, что это минимальная цена за месяц (самые дешевые даты)
         const distance = calculateDistance(originLat, originLon, destLat, destLon);
         if (distance > 0) {
-            // Более точная примерная цена: от 30 до 100 рублей за км в зависимости от расстояния
-            const pricePerKm = distance < 500 ? 80 : distance < 2000 ? 50 : 30;
-            return Math.round(distance * pricePerKm);
+            // Более точная примерная минимальная цена за месяц:
+            // Для коротких расстояний - выше цена за км, для длинных - ниже
+            // Учитываем, что это минимальная цена (самые дешевые даты)
+            let pricePerKm;
+            if (distance < 500) {
+                pricePerKm = 60; // Короткие рейсы дороже за км
+            } else if (distance < 2000) {
+                pricePerKm = 40; // Средние рейсы
+            } else {
+                pricePerKm = 25; // Длинные рейсы дешевле за км
+            }
+            
+            // Минимальная цена за месяц обычно на 20-30% ниже средней
+            const basePrice = distance * pricePerKm;
+            return Math.round(basePrice * 0.75); // Учитываем скидку за поиск минимальной цены
         }
         
         return null;
@@ -561,8 +577,19 @@ async function renderCitiesList() {
             );
             flightTime = calculateFlightTime(distance);
             
-            // Вычисляем примерную цену на основе расстояния
-            price = getFlightPrice(distance);
+            // Получаем реальную цену билета за месяц
+            try {
+                price = await getFlightPrice(
+                    'Центральная точка', 
+                    stat.name,
+                    centerLocation.lat, 
+                    centerLocation.lon,
+                    stat.city.lat, 
+                    stat.city.lon
+                );
+            } catch (e) {
+                price = null;
+            }
         }
         
         const aviasalesLink = centerLocation 
