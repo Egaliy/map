@@ -42,10 +42,8 @@
 
 ## GitHub Pages
 
-Репозиторий создан: https://github.com/Egaliy/map
+✅ **Приложение доступно:** https://egaliy.github.io/map/
 
-Для настройки GitHub Pages:
-1. Перейдите в настройки репозитория: https://github.com/Egaliy/map/settings/pages
-2. В разделе "Source" выберите ветку "master" и папку "/ (root)"
-3. Нажмите "Save"
-4. Через несколько минут приложение будет доступно по адресу: https://egaliy.github.io/map/
+Репозиторий: https://github.com/Egaliy/map
+
+GitHub Pages настроен и готов к использованию. Приложение будет доступно через несколько минут после первого деплоя.
