@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ближайший город</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📍 Ближайший город</h1>
+            <p class="subtitle">Введите города - определяется ближайший город к средней точке. Можно добавить один город несколько раз</p>
+        </header>
+
+        <div class="main-content">
+            <div class="input-section">
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="cityInput" 
+                        placeholder="Введите название города..."
+                        class="city-input"
+                    >
+                    <button id="addCityBtn" class="btn btn-primary">Добавить город</button>
+                </div>
+                
+                <div class="cities-list" id="citiesList">
+                    <p class="empty-message">Добавьте города для определения ближайшего</p>
+                </div>
+
+                <div class="actions">
+                    <button id="clearBtn" class="btn btn-secondary">Очистить</button>
+                </div>
+            </div>
+
+            <div class="result-section" id="resultSection" style="display: none;">
+                <div class="result-card">
+                    <h2>Ближайший город</h2>
+                    <div class="result-info">
+                        <div class="info-item">
+                            <span class="label">Город:</span>
+                            <span class="value" id="resultCity">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Страна:</span>
+                            <span class="value" id="resultCountry">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Координаты:</span>
+                            <span class="value" id="resultCoords">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Загрузка данных...</p>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+
