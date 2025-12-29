@@ -195,6 +195,80 @@ async function findNearestCityName(lat, lon) {
     };
 }
 
+// Поиск ближайшего населенного пункта к координатам через поиск в радиусе
+async function findNearestSettlement(lat, lon) {
+    try {
+        // Ищем ближайшие населенные пункты через поиск по типу place
+        // Пробуем разные типы населенных пунктов
+        const placeTypes = ['city', 'town', 'village', 'municipality'];
+        
+        for (const placeType of placeTypes) {
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/search?format=json&q=${placeType}&lat=${lat}&lon=${lon}&radius=50000&limit=5&addressdetails=1`,
+                    {
+                        headers: {
+                            'User-Agent': 'LocationAverageService/1.0'
+                        }
+                    }
+                );
+                
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    // Находим ближайший населенный пункт
+                    let nearest = data[0];
+                    let minDistance = calculateDistance(lat, lon, parseFloat(data[0].lat), parseFloat(data[0].lon));
+                    
+                    for (let i = 1; i < data.length; i++) {
+                        const distance = calculateDistance(lat, lon, parseFloat(data[i].lat), parseFloat(data[i].lon));
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            nearest = data[i];
+                        }
+                    }
+                    
+                    const address = nearest.address || {};
+                    const cityName = address.city || address.town || address.village || address.municipality || nearest.display_name.split(',')[0];
+                    
+                    if (cityName && cityName !== 'Неизвестно') {
+                        return {
+                            city: cityName,
+                            country: address.country || 'Неизвестно',
+                            fullAddress: nearest.display_name,
+                            lat: parseFloat(nearest.lat),
+                            lon: parseFloat(nearest.lon)
+                        };
+                    }
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        
+        // Если не нашли через поиск, используем reverse geocoding с большим радиусом
+        const reverseInfo = await findNearestCityName(lat, lon);
+        return {
+            city: reverseInfo.city,
+            country: reverseInfo.country,
+            fullAddress: reverseInfo.fullAddress,
+            lat: lat,
+            lon: lon
+        };
+    } catch (error) {
+        console.error('Ошибка при поиске ближайшего населенного пункта:', error);
+    }
+    
+    // Если не нашли, возвращаем координаты
+    return {
+        city: 'Ближайший населенный пункт',
+        country: 'Неизвестно',
+        fullAddress: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+        lat: lat,
+        lon: lon
+    };
+}
+
 // Вычисление средней точки
 function calculateAverageLocation(cities) {
     if (cities.length === 0) return null;
@@ -413,15 +487,10 @@ async function renderCitiesList() {
     
     const stats = getCityStats();
     
-        // Вычисляем ближайший город для расчета расстояний
-        let nearestCity = null;
+        // Вычисляем центральную точку для расчета расстояний
+        let centerLocation = null;
         if (cities.length > 0) {
-            if (cities.length > 1) {
-                const avgLocation = calculateAverageLocation(cities);
-                nearestCity = findNearestCity(avgLocation, cities);
-            } else {
-                nearestCity = cities[0];
-            }
+            centerLocation = calculateAverageLocation(cities);
         }
     
     let html = '';
@@ -430,9 +499,9 @@ async function renderCitiesList() {
         let flightTime = '';
         let price = null;
         
-        if (nearestCity && stat.city.name !== nearestCity.name) {
+        if (centerLocation) {
             distance = calculateDistance(
-                nearestCity.lat, nearestCity.lon,
+                centerLocation.lat, centerLocation.lon,
                 stat.city.lat, stat.city.lon
             );
             flightTime = calculateFlightTime(distance);
@@ -441,8 +510,8 @@ async function renderCitiesList() {
             price = getFlightPrice(distance);
         }
         
-        const aviasalesLink = nearestCity 
-            ? createAviasalesLink(nearestCity.name, stat.name)
+        const aviasalesLink = centerLocation 
+            ? createAviasalesLink('Центральная точка', stat.name)
             : '#';
         
         html += `
@@ -521,79 +590,79 @@ async function calculateAverage() {
         return;
     }
     
-    // Если только один город, показываем его как результат
-    if (cities.length === 1) {
-        const city = cities[0];
-        document.getElementById('resultCity').textContent = city.name;
-        document.getElementById('resultCountry').textContent = 'Загрузка...';
-        document.getElementById('resultCoords').textContent = `${city.lat.toFixed(6)}, ${city.lon.toFixed(6)}`;
-        document.getElementById('resultSection').style.display = 'block';
-        
-        // Получаем информацию о стране
-        const locationInfo = await reverseGeocode(city.lat, city.lon);
-        document.getElementById('resultCountry').textContent = locationInfo.country;
-        
-        // Удаляем предыдущие маркеры
-        markers.forEach(marker => map.removeLayer(marker));
-        markers = [];
-        
-        // Добавляем маркер ближайшего города
-        const nearestMarker = L.marker([city.lat, city.lon], {
-            icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34]
-            })
-        })
-        .addTo(map)
-        .bindPopup(`<b>Ближайший город</b><br>${locationInfo.city}, ${locationInfo.country}<br>${locationInfo.fullAddress}`);
-        
-        markers.push(nearestMarker);
-        return;
+    // Вычисляем среднюю точку всех городов
+    const avgLocation = calculateAverageLocation(cities);
+    
+    // Получаем информацию о средней точке
+    let locationInfo = await reverseGeocode(avgLocation.lat, avgLocation.lon);
+    
+    // Проверяем, является ли это городом или населенным пунктом
+    const isCity = locationInfo.city && 
+                   locationInfo.city !== 'Ближайший город' && 
+                   locationInfo.city !== 'Неизвестно';
+    
+    let resultLocation = {
+        lat: avgLocation.lat,
+        lon: avgLocation.lon,
+        city: locationInfo.city,
+        country: locationInfo.country,
+        fullAddress: locationInfo.fullAddress
+    };
+    
+    // Если это не город, ищем ближайший населенный пункт
+    if (!isCity) {
+        const nearestSettlement = await findNearestSettlement(avgLocation.lat, avgLocation.lon);
+        resultLocation = {
+            lat: nearestSettlement.lat,
+            lon: nearestSettlement.lon,
+            city: nearestSettlement.city,
+            country: nearestSettlement.country,
+            fullAddress: nearestSettlement.fullAddress
+        };
     }
     
-    try {
-        // Вычисляем среднюю точку
-        const avgLocation = calculateAverageLocation(cities);
-        
-        // Находим ближайший город к средней точке
-        const nearestCity = findNearestCity(avgLocation, cities);
-        
-        // Получаем информацию о ближайшем городе
-        const locationInfo = await reverseGeocode(nearestCity.lat, nearestCity.lon);
-        
-        // Отображаем результат
-        document.getElementById('resultCity').textContent = locationInfo.city;
-        document.getElementById('resultCountry').textContent = locationInfo.country;
-        document.getElementById('resultCoords').textContent = `${nearestCity.lat.toFixed(6)}, ${nearestCity.lon.toFixed(6)}`;
-        document.getElementById('resultSection').style.display = 'block';
-        
-        // Удаляем предыдущие маркеры
-        markers.forEach(marker => map.removeLayer(marker));
-        markers = [];
-        
-        // Добавляем маркер ближайшего города
-        const nearestMarker = L.marker([nearestCity.lat, nearestCity.lon], {
-            icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34]
-            })
+    // Отображаем результат
+    document.getElementById('resultCity').textContent = resultLocation.city;
+    document.getElementById('resultCountry').textContent = resultLocation.country;
+    document.getElementById('resultCoords').textContent = `${resultLocation.lat.toFixed(6)}, ${resultLocation.lon.toFixed(6)}`;
+    document.getElementById('resultSection').style.display = 'block';
+    
+    // Удаляем предыдущие маркеры
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    
+    // Добавляем маркер центральной точки (синий)
+    const centerMarker = L.marker([avgLocation.lat, avgLocation.lon], {
+        icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34]
         })
-        .addTo(map)
-        .bindPopup(`<b>Ближайший город</b><br>${locationInfo.city}, ${locationInfo.country}<br>${locationInfo.fullAddress}`);
-        
-        markers.push(nearestMarker);
-        
-        // Обновляем границы карты для показа всех точек
-        const allMarkers = [...cityMarkers, nearestMarker];
-        const group = new L.featureGroup(allMarkers);
-        map.fitBounds(group.getBounds().pad(0.1));
-    } catch (error) {
-        console.error('Ошибка при расчете:', error);
-    }
+    })
+    .addTo(map)
+    .bindPopup(`<b>Центральная точка</b><br>${avgLocation.lat.toFixed(6)}, ${avgLocation.lon.toFixed(6)}`);
+    
+    markers.push(centerMarker);
+    
+    // Добавляем маркер ближайшего населенного пункта (красный)
+    const nearestMarker = L.marker([resultLocation.lat, resultLocation.lon], {
+        icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34]
+        })
+    })
+    .addTo(map)
+    .bindPopup(`<b>Ближайший населенный пункт</b><br>${resultLocation.city}, ${resultLocation.country}<br>${resultLocation.fullAddress}`);
+    
+    markers.push(nearestMarker);
+    
+    // Обновляем границы карты для показа всех точек
+    const allMarkers = [...cityMarkers, ...markers];
+    const group = new L.featureGroup(allMarkers);
+    map.fitBounds(group.getBounds().pad(0.1));
 }
 
 // Очистка всех данных
