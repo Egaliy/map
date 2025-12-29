@@ -17,9 +17,7 @@ body {
     max-width: 1400px;
     margin: 0 auto;
     background: #000;
-    border-radius: 20px;
     overflow: hidden;
-    border: 2px solid #fff;
 }
 
 header {
@@ -27,7 +25,6 @@ header {
     color: #fff;
     padding: 30px;
     text-align: center;
-    border-bottom: 2px solid #fff;
 }
 
 header h1 {
@@ -60,10 +57,6 @@ header h1 {
 @media (max-width: 768px) {
     body {
         padding: 10px;
-    }
-    
-    .container {
-        border-radius: 12px;
     }
     
     header {
@@ -124,7 +117,6 @@ header h1 {
     .map-container {
         height: 400px;
         margin: 0 15px 20px;
-        border-radius: 8px;
     }
     
     .info-item {
@@ -214,8 +206,7 @@ header h1 {
 .city-input {
     flex: 1;
     padding: 12px 16px;
-    border: 2px solid #fff;
-    border-radius: 8px;
+    border: none;
     font-size: 16px;
     transition: all 0.3s;
     background: #000;
@@ -232,14 +223,11 @@ header h1 {
 
 .city-input:focus {
     outline: none;
-    border-color: #fff;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
 }
 
 .btn {
     padding: 12px 24px;
-    border: 2px solid #fff;
-    border-radius: 8px;
+    border: none;
     font-size: 16px;
     font-weight: 900;
     cursor: pointer;
@@ -254,39 +242,28 @@ header h1 {
 .btn-primary {
     background: #000;
     color: #fff;
-    border: 2px solid #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: #fff;
-    color: #000;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+    opacity: 0.7;
 }
 
 .btn-success {
     background: #000;
     color: #fff;
-    border: 2px solid #fff;
 }
 
 .btn-success:hover:not(:disabled) {
-    background: #fff;
-    color: #000;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+    opacity: 0.7;
 }
 
 .btn-secondary {
     background: #000;
     color: #fff;
-    border: 2px solid #fff;
 }
 
 .btn-secondary:hover {
-    background: #fff;
-    color: #000;
-    transform: translateY(-2px);
+    opacity: 0.7;
 }
 
 .btn:disabled {
@@ -298,8 +275,6 @@ header h1 {
     min-height: 200px;
     max-height: 300px;
     overflow-y: auto;
-    border: 2px solid #fff;
-    border-radius: 8px;
     padding: 15px;
     background: #000;
 }
@@ -317,11 +292,9 @@ header h1 {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 12px 16px;
+    padding: 12px 0;
     background: #000;
-    border-radius: 6px;
     margin-bottom: 8px;
-    border: 1px solid #fff;
     animation: slideIn 0.3s ease-out;
     gap: 15px;
 }
@@ -395,11 +368,9 @@ header h1 {
     background: #fff;
     color: #000;
     padding: 2px 8px;
-    border-radius: 12px;
     font-size: 0.75em;
     font-weight: 900;
     margin-left: 8px;
-    border: 1px solid #fff;
     letter-spacing: -0.01em;
 }
 
@@ -421,8 +392,7 @@ header h1 {
 .buy-ticket-btn {
     background: #fff;
     color: #000;
-    border: 2px solid #fff;
-    border-radius: 4px;
+    border: none;
     padding: 6px 12px;
     text-decoration: none;
     font-size: 14px;
@@ -433,16 +403,13 @@ header h1 {
 }
 
 .buy-ticket-btn:hover {
-    background: #000;
-    color: #fff;
-    transform: scale(1.05);
+    opacity: 0.7;
 }
 
 .add-more-btn {
     background: #000;
     color: #fff;
-    border: 2px solid #fff;
-    border-radius: 4px;
+    border: none;
     padding: 6px 12px;
     cursor: pointer;
     font-size: 16px;
@@ -453,16 +420,13 @@ header h1 {
 }
 
 .add-more-btn:hover {
-    background: #fff;
-    color: #000;
-    transform: scale(1.1);
+    opacity: 0.7;
 }
 
 .remove-btn {
     background: #000;
     color: #fff;
-    border: 2px solid #fff;
-    border-radius: 4px;
+    border: none;
     padding: 6px 12px;
     cursor: pointer;
     font-size: 14px;
@@ -472,9 +436,7 @@ header h1 {
 }
 
 .remove-btn:hover {
-    background: #fff;
-    color: #000;
-    transform: scale(1.05);
+    opacity: 0.7;
 }
 
 .actions {
@@ -501,8 +463,6 @@ header h1 {
     background: #000;
     color: #fff;
     padding: 25px;
-    border-radius: 12px;
-    border: 2px solid #fff;
 }
 
 .result-card h2 {
@@ -522,10 +482,8 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px;
+    padding: 12px 0;
     background: #000;
-    border-radius: 8px;
-    border: 1px solid #fff;
 }
 
 .label {
@@ -543,9 +501,7 @@ header h1 {
 .map-container {
     height: 500px;
     margin: 0 30px 30px;
-    border-radius: 12px;
     overflow: hidden;
-    border: 2px solid #fff;
 }
 
 #map {
@@ -589,10 +545,7 @@ header h1 {
     background: #000;
     color: #fff;
     padding: 12px 16px;
-    border-radius: 8px;
     margin-top: 10px;
-    border-left: 4px solid #fff;
-    border: 2px solid #fff;
     animation: slideIn 0.3s ease-out;
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -602,10 +555,7 @@ header h1 {
     background: #000;
     color: #fff;
     padding: 12px 16px;
-    border-radius: 8px;
     margin-top: 10px;
-    border-left: 4px solid #fff;
-    border: 2px solid #fff;
     animation: slideIn 0.3s ease-out;
     font-weight: 700;
     letter-spacing: -0.02em;
