@@ -7,75 +7,76 @@
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: #0a0a0a;
-    min-height: 100vh;
-    padding: 20px;
+    margin: 0;
+    padding: 0;
     color: #e0e0e0;
     font-weight: 500;
     letter-spacing: -0.03em;
-}
-
-.container {
-    max-width: 1400px;
-    margin: 0 auto;
-    background: #0f0f0f;
     overflow: hidden;
 }
 
-header {
-    background: #0f0f0f;
-    color: #e0e0e0;
-    padding: 30px;
-    text-align: center;
+.map-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
 }
 
-header h1 {
-    font-size: 2.5em;
-    margin-bottom: 10px;
-    font-weight: 500;
-    letter-spacing: -0.03em;
-    color: #f5f5f5;
+#map {
+    width: 100%;
+    height: 100%;
+    background: #0a0a0a;
 }
 
-.subtitle {
-    font-size: 1.1em;
-    color: #b0b0b0;
-    font-weight: 500;
-    letter-spacing: -0.03em;
+.fixed-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 360px;
+    width: 100%;
 }
 
-.main-content {
-    padding: 30px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 30px;
+.panel-content {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-radius: 20px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
 }
 
-@media (max-width: 968px) {
-    .main-content {
-        grid-template-columns: 1fr;
-    }
+.panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 @media (max-width: 768px) {
-    body {
-        padding: 10px;
+    .fixed-panel {
+        top: 10px;
+        right: 10px;
+        max-width: calc(100% - 20px);
     }
     
-    header {
-        padding: 20px 15px;
-    }
-    
-    header h1 {
-        font-size: 1.8em;
-    }
-    
-    .subtitle {
-        font-size: 0.95em;
-    }
-    
-    .main-content {
-        padding: 20px 15px;
-        gap: 20px;
+    .panel-content {
+        padding: 12px;
     }
     
     .input-group {
@@ -84,7 +85,6 @@ header h1 {
     
     .btn {
         width: 100%;
-        padding: 14px 24px;
     }
     
     .city-item {
@@ -102,47 +102,11 @@ header h1 {
         justify-content: flex-end;
         flex-wrap: wrap;
     }
-    
-    .buy-ticket-btn {
-        width: 100%;
-        text-align: center;
-    }
-    
-    .result-card {
-        padding: 20px;
-    }
-    
-    .result-card h2 {
-        font-size: 1.5em;
-    }
-    
-    .map-container {
-        height: 400px;
-        margin: 0 15px 20px;
-    }
-    
-    .info-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
-    }
-    
-    .label {
-        min-width: auto;
-    }
 }
 
 @media (max-width: 480px) {
-    header h1 {
-        font-size: 1.5em;
-    }
-    
-    .subtitle {
-        font-size: 0.85em;
-    }
-    
-    .main-content {
-        padding: 15px 10px;
+    .panel-content {
+        padding: 10px;
     }
     
     .city-input {
@@ -188,57 +152,64 @@ header h1 {
         font-size: 1em;
     }
     
-    .map-container {
-        height: 300px;
-        margin: 0 10px 15px;
-    }
-}
-
-.input-section {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
 }
 
 .input-group {
     display: flex;
-    gap: 10px;
+    gap: 6px;
+    margin-bottom: 10px;
 }
 
 .city-input {
     flex: 1;
-    padding: 12px 16px;
-    border: none;
-    font-size: 16px;
-    transition: all 0.3s;
-    background: #1a1a1a;
-    color: #e0e0e0;
-    font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    letter-spacing: -0.03em;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    font-weight: 400;
+    letter-spacing: -0.01em;
 }
 
 .city-input::placeholder {
-    color: #808080;
-    font-weight: 500;
+    color: rgba(255, 255, 255, 0.4);
 }
 
 .city-input:focus {
     outline: none;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .btn {
-    padding: 12px 24px;
+    padding: 8px 12px;
     border: none;
-    font-size: 16px;
+    border-radius: 10px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
-    background: #ffffff;
-    color: #0a0a0a;
-    font-family: 'Inter', sans-serif;
-    letter-spacing: -0.03em;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+    min-width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.02);
+}
+
+.btn:active {
+    transform: scale(0.98);
 }
 
 .btn-primary {
@@ -274,31 +245,47 @@ header h1 {
 }
 
 .cities-list {
-    min-height: 200px;
-    max-height: 300px;
+    min-height: 40px;
+    max-height: 400px;
     overflow-y: auto;
-    padding: 15px;
-    background: #0f0f0f;
+    padding: 0;
+    margin-top: 8px;
+}
+
+.cities-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.cities-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
 }
 
 .empty-message {
     text-align: center;
-    color: #808080;
-    padding: 40px 20px;
-    font-style: italic;
-    font-weight: 500;
-    letter-spacing: -0.03em;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 20px;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
 }
 
 .city-item {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    padding: 12px 0;
-    background: #0f0f0f;
-    margin-bottom: 8px;
-    animation: slideIn 0.3s ease-out;
-    gap: 15px;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    margin-bottom: 4px;
+    border-radius: 10px;
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    gap: 8px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 14px;
+}
+
+.city-item:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 @keyframes slideIn {
@@ -332,49 +319,60 @@ header h1 {
 
 .city-name {
     font-weight: 500;
-    color: #f5f5f5;
-    letter-spacing: -0.03em;
+    color: #fff;
+    letter-spacing: -0.01em;
+    font-size: 14px;
+}
+
+.city-loading {
+    opacity: 0.7;
+}
+
+.loading-indicator {
+    font-size: 0.9em;
+    margin-left: 8px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.city-loading-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+    letter-spacing: -0.01em;
 }
 
 .city-details {
     display: flex;
-    gap: 15px;
-    font-size: 0.85em;
-    font-weight: 500;
-    letter-spacing: -0.03em;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin-top: 4px;
 }
 
 .city-distance {
-    color: #b0b0b0;
+    color: rgba(255, 255, 255, 0.5);
 }
 
-.city-flight-time {
-    color: #b0b0b0;
-}
-
-.city-price {
-    font-size: 1em;
-    font-weight: 500;
-    color: #e0e0e0;
-    letter-spacing: -0.03em;
-}
-
-.city-price-loading {
-    font-size: 0.85em;
-    font-weight: 500;
-    color: #808080;
-    font-style: italic;
-    letter-spacing: -0.03em;
-}
 
 .city-count {
-    background: #3a3a3a;
-    color: #f5f5f5;
-    padding: 2px 8px;
-    font-size: 0.75em;
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 2px 6px;
+    font-size: 12px;
     font-weight: 500;
-    margin-left: 8px;
-    letter-spacing: -0.03em;
+    margin-left: 6px;
+    letter-spacing: -0.01em;
+    border-radius: 8px;
 }
 
 .city-coords {
@@ -392,54 +390,33 @@ header h1 {
     flex-wrap: wrap;
 }
 
-.buy-ticket-btn {
-    background: #ffffff;
-    color: #0a0a0a;
+
+.add-more-btn,
+.remove-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
     border: none;
-    padding: 6px 12px;
-    text-decoration: none;
-    font-size: 14px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
     font-weight: 500;
-    transition: all 0.2s;
-    letter-spacing: -0.03em;
-    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 8px;
+    letter-spacing: -0.01em;
+    min-width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.buy-ticket-btn:hover {
-    background: #f0f0f0;
+.add-more-btn:hover,
+.remove-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .add-more-btn {
-    background: #ffffff;
-    color: #0a0a0a;
-    border: none;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: 500;
-    transition: all 0.2s;
-    min-width: 32px;
-    letter-spacing: -0.03em;
-}
-
-.add-more-btn:hover {
-    background: #f0f0f0;
-}
-
-.remove-btn {
-    background: #ffffff;
-    color: #0a0a0a;
-    border: none;
-    padding: 6px 12px;
-    cursor: pointer;
     font-size: 14px;
-    transition: all 0.2s;
-    font-weight: 500;
-    letter-spacing: -0.03em;
-}
-
-.remove-btn:hover {
-    background: #f0f0f0;
 }
 
 .actions {
@@ -447,9 +424,6 @@ header h1 {
     gap: 10px;
 }
 
-.result-section {
-    animation: fadeIn 0.5s ease-in;
-}
 
 @keyframes fadeIn {
     from {
@@ -462,123 +436,41 @@ header h1 {
     }
 }
 
-.result-card {
-    background: #0f0f0f;
-    color: #e0e0e0;
-    padding: 25px;
-}
-
-.prices-section {
-    animation: fadeIn 0.5s ease-in;
-}
-
-.prices-card {
-    background: #0f0f0f;
-    color: #e0e0e0;
-    padding: 25px;
-}
-
-.prices-card h2 {
-    margin-bottom: 20px;
-    font-size: 1.8em;
-    font-weight: 500;
-    letter-spacing: -0.03em;
-    color: #f5f5f5;
-}
-
-.prices-list {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.price-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.price-city-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.price-city-name {
-    font-weight: 500;
-    color: #f5f5f5;
-    letter-spacing: -0.03em;
-}
-
-.price-distance {
-    font-size: 0.85em;
-    color: #b0b0b0;
-    letter-spacing: -0.03em;
-}
-
-.price-value-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.price-value {
-    font-size: 1.1em;
-    font-weight: 500;
-    color: #f5f5f5;
-    letter-spacing: -0.03em;
-}
-
-.result-card h2 {
-    margin-bottom: 20px;
-    font-size: 1.8em;
-    font-weight: 500;
-    letter-spacing: -0.03em;
-    color: #f5f5f5;
+.result-section {
+    margin-top: 8px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .result-info {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 6px;
 }
 
 .info-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 0;
-    background: #0f0f0f;
-}
-
-.label {
-    font-weight: 500;
-    min-width: 100px;
-    letter-spacing: -0.03em;
-    color: #b0b0b0;
+    gap: 0;
 }
 
 .value {
-    font-size: 1.1em;
+    font-size: 14px;
     font-weight: 500;
-    letter-spacing: -0.03em;
-    color: #f5f5f5;
+    letter-spacing: -0.01em;
+    color: #fff;
 }
 
-.map-container {
-    height: 500px;
-    margin: 0 30px 30px;
-    overflow: hidden;
+.value-small {
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: rgba(255, 255, 255, 0.6);
 }
 
-#map {
-    width: 100%;
-    height: 100%;
-    background: #0a0a0a;
-}
 
 .loading {
     position: fixed;

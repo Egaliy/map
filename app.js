@@ -3,39 +3,121 @@ let cities = []; // Массив всех вхождений городов (р�
 let map = null;
 let markers = [];
 let cityMarkers = []; // Массив маркеров городов, каждый маркер связан с индексом в cities
+let linesToCenter = []; // Массив линий от городов до центральной точки
+let geocodeCache = {}; // Кэш результатов геокодирования
+let reverseGeocodeCache = {}; // Кэш результатов reverse geocoding
+let processingQueue = []; // Очередь городов для обработки
+let isProcessing = false; // Флаг обработки очереди
 
-// Работа с cookies
-function setCookie(name, value, days = 365) {
-    const expires = new Date();
-    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-    document.cookie = `${name}=${encodeURIComponent(JSON.stringify(value))};expires=${expires.toUTCString()};path=/`;
+// Работа с localStorage (кэш)
+const CACHE_KEYS = {
+    CITIES: 'mapApp_cities',
+    RESULT: 'mapApp_result',
+    MAP_STATE: 'mapApp_mapState',
+    GEOCODE_CACHE: 'mapApp_geocodeCache'
+};
+
+// Сохранение в localStorage
+function saveToCache(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+        console.warn('Не удалось сохранить в кэш:', e);
+    }
 }
 
-function getCookie(name) {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) === 0) {
-            try {
-                return JSON.parse(decodeURIComponent(c.substring(nameEQ.length, c.length)));
-            } catch (e) {
-                return null;
-            }
+// Загрузка из localStorage
+function loadFromCache(key) {
+    try {
+        const item = localStorage.getItem(key);
+        if (item) {
+            return JSON.parse(item);
         }
+    } catch (e) {
+        console.warn('Не удалось загрузить из кэша:', e);
     }
     return null;
 }
 
-// Сохранение городов в cookies
-function saveCitiesToCookie() {
-    setCookie('cities', cities);
+// Удаление из кэша
+function removeFromCache(key) {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        console.warn('Не удалось удалить из кэша:', e);
+    }
 }
 
-// Загрузка городов из cookies
+// Сохранение всех данных в кэш
+function saveAllData() {
+    // Сохраняем только города с координатами (не сохраняем города в процессе загрузки)
+    const citiesToSave = cities.filter(c => c.lat && c.lon);
+    saveToCache(CACHE_KEYS.CITIES, citiesToSave);
+    
+    // Сохраняем результат, если он есть
+    const resultSection = document.getElementById('resultSection');
+    if (resultSection && resultSection.style.display !== 'none') {
+        const result = {
+            city: document.getElementById('resultCity').textContent,
+            country: document.getElementById('resultCountry').textContent
+        };
+        saveToCache(CACHE_KEYS.RESULT, result);
+    }
+    
+    // Сохраняем состояние карты
+    if (map) {
+        const center = map.getCenter();
+        const zoom = map.getZoom();
+        saveToCache(CACHE_KEYS.MAP_STATE, {
+            center: [center.lat, center.lng],
+            zoom: zoom
+        });
+    }
+    
+    // Сохраняем кэш геокодирования
+    saveToCache(CACHE_KEYS.GEOCODE_CACHE, geocodeCache);
+    
+    // Сохраняем кэш reverse geocoding
+    saveToCache('mapApp_reverseGeocodeCache', reverseGeocodeCache);
+}
+
+// Загрузка всех данных из кэша
+function loadAllData() {
+    // Загружаем города
+    const savedCities = loadFromCache(CACHE_KEYS.CITIES);
+    if (savedCities && Array.isArray(savedCities) && savedCities.length > 0) {
+        cities = savedCities;
+    }
+    
+    // Загружаем кэш геокодирования
+    const savedGeocodeCache = loadFromCache(CACHE_KEYS.GEOCODE_CACHE);
+    if (savedGeocodeCache && typeof savedGeocodeCache === 'object') {
+        geocodeCache = savedGeocodeCache;
+    }
+    
+    // Загружаем кэш reverse geocoding
+    const savedReverseCache = loadFromCache('mapApp_reverseGeocodeCache');
+    if (savedReverseCache && typeof savedReverseCache === 'object') {
+        reverseGeocodeCache = savedReverseCache;
+    }
+    
+    // Загружаем состояние карты
+    const savedMapState = loadFromCache(CACHE_KEYS.MAP_STATE);
+    if (savedMapState) {
+        return savedMapState;
+    }
+    
+    return null;
+}
+
+// Сохранение городов (для обратной совместимости)
+function saveCitiesToCookie() {
+    saveAllData();
+}
+
+// Загрузка городов (для обратной совместимости)
 function loadCitiesFromCookie() {
-    const savedCities = getCookie('cities');
+    const savedCities = loadFromCache(CACHE_KEYS.CITIES);
     if (savedCities && Array.isArray(savedCities) && savedCities.length > 0) {
         return savedCities;
     }
@@ -99,6 +181,12 @@ function showSuccess(message) {
 
 // Геокодирование города (преобразование названия в координаты)
 async function geocodeCity(cityName) {
+    // Проверяем кэш
+    const cacheKey = cityName.toLowerCase().trim();
+    if (geocodeCache[cacheKey]) {
+        return geocodeCache[cacheKey];
+    }
+    
     try {
         const response = await fetch(
             `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityName)}&limit=1`,
@@ -112,12 +200,18 @@ async function geocodeCity(cityName) {
         const data = await response.json();
         
         if (data && data.length > 0) {
-            return {
+            const result = {
                 name: cityName,
                 lat: parseFloat(data[0].lat),
                 lon: parseFloat(data[0].lon),
                 displayName: data[0].display_name
             };
+            
+            // Сохраняем в кэш
+            geocodeCache[cacheKey] = result;
+            saveToCache(CACHE_KEYS.GEOCODE_CACHE, geocodeCache);
+            
+            return result;
         } else {
             throw new Error('Город не найден');
         }
@@ -128,6 +222,12 @@ async function geocodeCity(cityName) {
 
 // Reverse geocoding (преобразование координат в адрес)
 async function reverseGeocode(lat, lon) {
+    // Проверяем кэш (округление до 4 знаков для кэширования)
+    const cacheKey = `${lat.toFixed(4)}_${lon.toFixed(4)}`;
+    if (reverseGeocodeCache[cacheKey]) {
+        return reverseGeocodeCache[cacheKey];
+    }
+    
     try {
         const response = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`,
@@ -140,25 +240,35 @@ async function reverseGeocode(lat, lon) {
         
         const data = await response.json();
         
+        let result;
         if (data && data.address) {
             const address = data.address;
             const city = address.city || address.town || address.village || address.municipality;
             
             // Если город неизвестный, ищем ближайший город
             if (!city || city === 'Неизвестно') {
-                return await findNearestCityName(lat, lon);
+                result = await findNearestCityName(lat, lon);
+            } else {
+                result = {
+                    city: city,
+                    country: address.country || 'Неизвестно',
+                    fullAddress: data.display_name
+                };
             }
-            
-            return {
-                city: city,
-                country: address.country || 'Неизвестно',
-                fullAddress: data.display_name
-            };
         } else {
-            return await findNearestCityName(lat, lon);
+            result = await findNearestCityName(lat, lon);
         }
+        
+        // Сохраняем в кэш
+        reverseGeocodeCache[cacheKey] = result;
+        saveToCache('mapApp_reverseGeocodeCache', reverseGeocodeCache);
+        
+        return result;
     } catch (error) {
-        return await findNearestCityName(lat, lon);
+        const result = await findNearestCityName(lat, lon);
+        // Сохраняем даже ошибки в кэш, чтобы не повторять запросы
+        reverseGeocodeCache[cacheKey] = result;
+        return result;
     }
 }
 
@@ -197,138 +307,121 @@ async function findNearestCityName(lat, lon) {
 
 // Поиск ближайшего населенного пункта к координатам через поиск в радиусе
 async function findNearestSettlement(lat, lon) {
+    // Проверяем кэш
+    const cacheKey = `settlement_${lat.toFixed(4)}_${lon.toFixed(4)}`;
+    if (reverseGeocodeCache[cacheKey]) {
+        return reverseGeocodeCache[cacheKey];
+    }
+    
     try {
-        // Используем nearby поиск для точного нахождения ближайшего населенного пункта
-        // Ищем в радиусе до 100 км, постепенно увеличивая радиус
-        const radii = [5000, 10000, 25000, 50000, 100000]; // 5, 10, 25, 50, 100 км
+        // Сначала пробуем простой reverse geocoding
+        const reverseInfo = await findNearestCityName(lat, lon);
         
-        let allSettlements = [];
+        // Если нашли нормальный город, возвращаем его
+        if (reverseInfo.city && reverseInfo.city !== 'Ближайший город' && reverseInfo.city !== 'Неизвестно') {
+            const result = {
+                city: reverseInfo.city,
+                country: reverseInfo.country,
+                fullAddress: reverseInfo.fullAddress,
+                lat: lat,
+                lon: lon
+            };
+            reverseGeocodeCache[cacheKey] = result;
+            saveToCache('mapApp_reverseGeocodeCache', reverseGeocodeCache);
+            return result;
+        }
         
-        for (const radius of radii) {
-            try {
-                // Используем nearby поиск с типом place
-                const response = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`,
-                    {
-                        headers: {
-                            'User-Agent': 'LocationAverageService/1.0'
-                        }
-                    }
-                );
-                
-                const reverseData = await response.json();
-                
-                // Проверяем, есть ли город в reverse geocoding
-                if (reverseData && reverseData.address) {
-                    const address = reverseData.address;
-                    const cityName = address.city || address.town || address.village || address.municipality;
-                    if (cityName && cityName !== 'Неизвестно') {
-                        return {
-                            city: cityName,
-                            country: address.country || 'Неизвестно',
-                            fullAddress: reverseData.display_name,
-                            lat: lat,
-                            lon: lon
-                        };
+        // Если не нашли, ищем через nearby поиск (только один запрос с небольшим радиусом)
+        try {
+            const nearbyResponse = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=&lat=${lat}&lon=${lon}&radius=50000&limit=10&addressdetails=1&featuretype=settlement`,
+                {
+                    headers: {
+                        'User-Agent': 'LocationAverageService/1.0'
                     }
                 }
+            );
+            
+            const nearbyData = await nearbyResponse.json();
+            
+            if (nearbyData && nearbyData.length > 0) {
+                // Находим ближайший населенный пункт
+                let nearest = null;
+                let minDistance = Infinity;
                 
-                // Если не нашли в reverse, ищем через nearby поиск
-                const nearbyResponse = await fetch(
-                    `https://nominatim.openstreetmap.org/search?format=json&q=&lat=${lat}&lon=${lon}&radius=${radius}&limit=50&addressdetails=1&featuretype=settlement`,
-                    {
-                        headers: {
-                            'User-Agent': 'LocationAverageService/1.0'
-                        }
-                    }
-                );
-                
-                const nearbyData = await nearbyResponse.json();
-                
-                if (nearbyData && nearbyData.length > 0) {
-                    // Добавляем все найденные населенные пункты с расчетом расстояния
-                    nearbyData.forEach(item => {
-                        const address = item.address || {};
-                        const cityName = address.city || address.town || address.village || address.municipality;
-                        if (cityName) {
-                            const itemLat = parseFloat(item.lat);
-                            const itemLon = parseFloat(item.lon);
-                            const distance = calculateDistance(lat, lon, itemLat, itemLon);
-                            
-                            allSettlements.push({
+                nearbyData.forEach(item => {
+                    const address = item.address || {};
+                    const cityName = address.city || address.town || address.village || address.municipality;
+                    if (cityName) {
+                        const itemLat = parseFloat(item.lat);
+                        const itemLon = parseFloat(item.lon);
+                        const distance = calculateDistance(lat, lon, itemLat, itemLon);
+                        
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            nearest = {
                                 lat: itemLat,
                                 lon: itemLon,
                                 city: cityName,
                                 country: address.country || 'Неизвестно',
-                                fullAddress: item.display_name,
-                                distance: distance
-                            });
+                                fullAddress: item.display_name
+                            };
                         }
-                    });
-                    
-                    // Если нашли населенные пункты, выходим из цикла
-                    if (allSettlements.length > 0) {
-                        break;
                     }
+                });
+                
+                if (nearest) {
+                    reverseGeocodeCache[cacheKey] = nearest;
+                    saveToCache('mapApp_reverseGeocodeCache', reverseGeocodeCache);
+                    return nearest;
                 }
-            } catch (e) {
-                continue;
             }
+        } catch (e) {
+            // Игнорируем ошибку nearby поиска
         }
         
-        // Если нашли населенные пункты, выбираем ближайший
-        if (allSettlements.length > 0) {
-            // Сортируем по расстоянию и берем ближайший
-            allSettlements.sort((a, b) => a.distance - b.distance);
-            const nearest = allSettlements[0];
-            
-            return {
-                city: nearest.city,
-                country: nearest.country,
-                fullAddress: nearest.fullAddress,
-                lat: nearest.lat,
-                lon: nearest.lon
-            };
-        }
-        
-        // Если не нашли через поиск, используем reverse geocoding
-        const reverseInfo = await findNearestCityName(lat, lon);
-        return {
+        // Если ничего не нашли, возвращаем базовую информацию
+        const result = {
             city: reverseInfo.city,
             country: reverseInfo.country,
             fullAddress: reverseInfo.fullAddress,
             lat: lat,
             lon: lon
         };
+        reverseGeocodeCache[cacheKey] = result;
+        saveToCache('mapApp_reverseGeocodeCache', reverseGeocodeCache);
+        return result;
     } catch (error) {
         console.error('Ошибка при поиске ближайшего населенного пункта:', error);
+        const result = {
+            city: 'Ближайший населенный пункт',
+            country: 'Неизвестно',
+            fullAddress: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+            lat: lat,
+            lon: lon
+        };
+        reverseGeocodeCache[cacheKey] = result;
+        return result;
     }
-    
-    // Если не нашли, возвращаем координаты
-    return {
-        city: 'Ближайший населенный пункт',
-        country: 'Неизвестно',
-        fullAddress: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-        lat: lat,
-        lon: lon
-    };
 }
 
 // Вычисление средней точки
 function calculateAverageLocation(cities) {
-    if (cities.length === 0) return null;
+    // Фильтруем только города с координатами
+    const citiesWithCoords = cities.filter(city => city.lat && city.lon);
+    if (citiesWithCoords.length === 0) return null;
     
     let sumLat = 0;
     let sumLon = 0;
     
-    cities.forEach(city => {
+    citiesWithCoords.forEach(city => {
         sumLat += city.lat;
         sumLon += city.lon;
     });
     
     return {
-        lat: sumLat / cities.length,
-        lon: sumLon / cities.length
+        lat: sumLat / citiesWithCoords.length,
+        lon: sumLon / citiesWithCoords.length
     };
 }
 
@@ -343,192 +436,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
         Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
-}
-
-// Вычисление времени полета (средняя скорость самолета ~850 км/ч)
-function calculateFlightTime(distanceKm) {
-    const avgSpeed = 850; // км/ч
-    const hours = distanceKm / avgSpeed;
-    if (hours < 1) {
-        return Math.round(hours * 60) + ' мин';
-    }
-    const h = Math.floor(hours);
-    const m = Math.round((hours - h) * 60);
-    if (m === 0) {
-        return h + ' ч';
-    }
-    return h + ' ч ' + m + ' мин';
-}
-
-// Получение IATA кода города (упрощенная версия)
-function getCityIATA(cityName) {
-    // Простой маппинг популярных городов
-    const cityMap = {
-        'москва': 'MOW',
-        'санкт-петербург': 'LED',
-        'новосибирск': 'OVB',
-        'екатеринбург': 'SVX',
-        'казань': 'KZN',
-        'нижний новгород': 'GOJ',
-        'челябинск': 'CEK',
-        'самара': 'KUF',
-        'омск': 'OMS',
-        'ростов-на-дону': 'ROV',
-        'уфа': 'UFA',
-        'красноярск': 'KJA',
-        'воронеж': 'VOZ',
-        'пермь': 'PEE',
-        'волгоград': 'VOG'
-    };
-    return cityMap[cityName.toLowerCase()] || cityName.toUpperCase().substring(0, 3);
-}
-
-// Поиск ближайшего крупного города для билетов
-async function findNearestMajorCity(lat, lon) {
-    try {
-        // Ищем крупные города в радиусе 200 км
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=[place=city]&lat=${lat}&lon=${lon}&radius=200000&limit=10&addressdetails=1`,
-            {
-                headers: {
-                    'User-Agent': 'LocationAverageService/1.0'
-                }
-            }
-        );
-        
-        const data = await response.json();
-        
-        if (data && data.length > 0) {
-            // Находим ближайший крупный город
-            let nearest = data[0];
-            let minDistance = calculateDistance(lat, lon, parseFloat(data[0].lat), parseFloat(data[0].lon));
-            
-            for (let i = 1; i < data.length; i++) {
-                const distance = calculateDistance(lat, lon, parseFloat(data[i].lat), parseFloat(data[i].lon));
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    nearest = data[i];
-                }
-            }
-            
-            const address = nearest.address || {};
-            return {
-                name: address.city || nearest.display_name.split(',')[0],
-                lat: parseFloat(nearest.lat),
-                lon: parseFloat(nearest.lon),
-                code: getCityIATA(address.city || nearest.display_name.split(',')[0])
-            };
-        }
-    } catch (error) {
-        console.error('Ошибка при поиске крупного города:', error);
-    }
-    
-    return null;
-}
-
-// Получение минимальной цены билета за месяц через Aviasales API
-async function getFlightPrice(originCity, destinationCity, originLat, originLon, destLat, destLon) {
-    try {
-        let originCode = getCityIATA(originCity);
-        let destCode = getCityIATA(destinationCity);
-        
-        // Если код города не найден или это "ноунейм" город, ищем ближайший крупный город
-        if (originCode.length === 3 && originCode === originCity.toUpperCase().substring(0, 3)) {
-            const majorCity = await findNearestMajorCity(originLat, originLon);
-            if (majorCity) {
-                originCode = majorCity.code;
-            }
-        }
-        
-        if (destCode.length === 3 && destCode === destinationCity.toUpperCase().substring(0, 3)) {
-            const majorCity = await findNearestMajorCity(destLat, destLon);
-            if (majorCity) {
-                destCode = majorCity.code;
-            }
-        }
-        
-        // Получаем даты для поиска (сегодня и через месяц)
-        const today = new Date();
-        const monthLater = new Date(today);
-        monthLater.setMonth(monthLater.getMonth() + 1);
-        
-        const dateFrom = today.toISOString().split('T')[0];
-        const dateTo = monthLater.toISOString().split('T')[0];
-        
-        // Используем Aviasales API для поиска минимальной цены за месяц
-        // Примечание: для реального использования нужен API ключ от Aviasales
-        // Можно получить бесплатный токен на https://www.travelpayouts.com/developers/api
-        const aviasalesToken = null; // Замените на ваш токен для реального использования
-        
-        if (aviasalesToken) {
-            try {
-                const response = await fetch(
-                    `https://api.travelpayouts.com/v2/prices/monthly?currency=rub&origin=${originCode}&destination=${destCode}&token=${aviasalesToken}`,
-                    {
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    }
-                );
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.data && data.data.length > 0) {
-                        // Находим минимальную цену за месяц
-                        const prices = data.data.map(item => item.value).filter(p => p > 0);
-                        if (prices.length > 0) {
-                            return Math.min(...prices);
-                        }
-                    }
-                }
-            } catch (apiError) {
-                console.log('Aviasales API недоступен, используем примерную цену');
-            }
-        }
-        
-        // Примерная минимальная цена на основе расстояния (если API недоступен)
-        // Учитываем, что это минимальная цена за месяц (самые дешевые даты)
-        const distance = calculateDistance(originLat, originLon, destLat, destLon);
-        if (distance > 0) {
-            // Более точная примерная минимальная цена за месяц:
-            // Для коротких расстояний - выше цена за км, для длинных - ниже
-            // Учитываем, что это минимальная цена (самые дешевые даты)
-            let pricePerKm;
-            if (distance < 500) {
-                pricePerKm = 60; // Короткие рейсы дороже за км
-            } else if (distance < 2000) {
-                pricePerKm = 40; // Средние рейсы
-            } else {
-                pricePerKm = 25; // Длинные рейсы дешевле за км
-            }
-            
-            // Минимальная цена за месяц обычно на 20-30% ниже средней
-            const basePrice = distance * pricePerKm;
-            return Math.round(basePrice * 0.75); // Учитываем скидку за поиск минимальной цены
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Ошибка при получении цены:', error);
-        return null;
-    }
-}
-
-// Создание ссылки на Aviasales с поиском за месяц
-function createAviasalesLink(originCity, destinationCity) {
-    const originCode = getCityIATA(originCity);
-    const destCode = getCityIATA(destinationCity);
-    
-    // Получаем даты для поиска (сегодня и через месяц)
-    const today = new Date();
-    const monthLater = new Date(today);
-    monthLater.setMonth(monthLater.getMonth() + 1);
-    
-    const dateFrom = today.toISOString().split('T')[0];
-    const dateTo = monthLater.toISOString().split('T')[0];
-    
-    // Ссылка на Aviasales с параметрами поиска за месяц
-    return `https://www.aviasales.ru/search/${originCode}${destCode}${dateFrom}?marker=your_marker_id`;
 }
 
 // Поиск ближайшего города к средней точке
@@ -550,6 +457,77 @@ function findNearestCity(avgLocation, cities) {
     return nearestCity;
 }
 
+// Обработка очереди городов
+async function processQueue() {
+    if (isProcessing || processingQueue.length === 0) {
+        return;
+    }
+    
+    isProcessing = true;
+    
+    while (processingQueue.length > 0) {
+        const cityName = processingQueue.shift();
+        
+        try {
+            // Геокодируем город
+            const city = await geocodeCity(cityName);
+            
+            // Обновляем все города с таким именем, которые еще не обработаны
+            let updated = false;
+            cities.forEach((c, index) => {
+                if (c.name === cityName && !c.lat) {
+                    cities[index] = { ...city };
+                    updated = true;
+                }
+            });
+            
+            // Если не нашли для обновления, добавляем новый
+            if (!updated) {
+                cities.push(city);
+            }
+            
+            // Обновляем список городов
+            await renderCitiesList();
+            
+            // Если это первый город с координатами, инициализируем карту
+            const citiesWithCoords = cities.filter(c => c.lat && c.lon);
+            if (citiesWithCoords.length === 1) {
+                initMap([city.lat, city.lon], 10);
+            }
+            
+            // Обновляем маркеры на карте
+            updateCityMarkers();
+            
+            // Обновляем границы карты
+            if (citiesWithCoords.length > 0) {
+                updateMapBounds();
+            }
+            
+            // Сохраняем в кэш
+            saveCitiesToCookie();
+            
+            // Автоматически рассчитываем среднюю точку асинхронно в фоне
+            if (citiesWithCoords.length >= 1) {
+                calculateAverage().catch(error => {
+                    console.error('Ошибка при расчете:', error);
+                });
+            }
+            
+            // Небольшая задержка между обработкой городов, чтобы не перегружать API
+            if (processingQueue.length > 0) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        } catch (error) {
+            // Удаляем все города с таким именем, которые еще не обработаны
+            cities = cities.filter(c => !(c.name === cityName && !c.lat));
+            await renderCitiesList();
+            showError(`Ошибка при обработке города "${cityName}": ${error.message}`);
+        }
+    }
+    
+    isProcessing = false;
+}
+
 // Добавление города
 async function addCity(cityNameToAdd = null) {
     const input = document.getElementById('cityInput');
@@ -560,54 +538,42 @@ async function addCity(cityNameToAdd = null) {
         return;
     }
     
-    showLoading();
+    // Сразу добавляем город в список с пометкой "загрузка"
+    const placeholderCity = {
+        name: cityName,
+        lat: null,
+        lon: null,
+        displayName: 'Загрузка...',
+        isLoading: true
+    };
+    cities.push(placeholderCity);
     
-    try {
-        const city = await geocodeCity(cityName);
-        cities.push(city);
-        
-        // Очистка сообщения "пусто"
-        const citiesList = document.getElementById('citiesList');
-        const emptyMsg = citiesList.querySelector('.empty-message');
-        if (emptyMsg) {
-            emptyMsg.remove();
-        }
-        
-        await renderCitiesList();
-        
-        // Если это первый город, показываем карту сразу
-        if (cities.length === 1) {
-            initMap([city.lat, city.lon], 10);
-        }
-        
-        // Обновляем все маркеры городов
-        updateCityMarkers();
-        
-        // Обновляем границы карты
-        if (cities.length > 0) {
-            updateMapBounds();
-        }
-        
-        if (!cityNameToAdd) {
-            input.value = '';
-        }
-        
-        // Автоматически рассчитываем среднюю точку
-        if (cities.length >= 1) {
-            await calculateAverage();
-        }
-        
-        // Сохраняем в cookies
-        saveCitiesToCookie();
-        
-        if (!cityNameToAdd) {
-            showSuccess(`Город "${cityName}" добавлен`);
-        }
-    } catch (error) {
-        showError(error.message);
-    } finally {
-        hideLoading();
+    // Очистка сообщения "пусто"
+    const citiesList = document.getElementById('citiesList');
+    const emptyMsg = citiesList.querySelector('.empty-message');
+    if (emptyMsg) {
+        emptyMsg.remove();
     }
+    
+    // Сразу обновляем список городов
+    await renderCitiesList();
+    
+    // Сохраняем в кэш
+    saveCitiesToCookie();
+    
+    // Очищаем поле ввода
+    if (!cityNameToAdd) {
+        input.value = '';
+        showSuccess(`Город "${cityName}" добавлен, обработка...`);
+    }
+    
+    // Добавляем в очередь обработки
+    processingQueue.push(cityName);
+    
+    // Запускаем обработку очереди (если еще не запущена)
+    processQueue().catch(error => {
+        console.error('Ошибка при обработке очереди:', error);
+    });
 }
 
 // Обновление всех маркеров городов на карте
@@ -616,12 +582,44 @@ function updateCityMarkers() {
     cityMarkers.forEach(marker => map.removeLayer(marker));
     cityMarkers = [];
     
-    // Создаем новые маркеры для всех городов
+    // Создаем новые маркеры только для городов с координатами
     cities.forEach(city => {
-        const marker = L.marker([city.lat, city.lon])
-            .addTo(map)
-            .bindPopup(`<b>${city.name}</b><br>${city.displayName}`);
-        cityMarkers.push(marker);
+        if (city.lat && city.lon) {
+            const marker = L.marker([city.lat, city.lon])
+                .addTo(map)
+                .bindPopup(`<b>${city.name}</b><br>${city.displayName}`);
+            cityMarkers.push(marker);
+        }
+    });
+}
+
+// Обновление линий от городов до центральной точки
+function updateLinesToCenter(centerLat, centerLon) {
+    // Проверяем, что карта инициализирована
+    if (!map) return;
+    
+    // Удаляем все существующие линии
+    linesToCenter.forEach(line => {
+        if (map.hasLayer(line)) {
+            map.removeLayer(line);
+        }
+    });
+    linesToCenter = [];
+    
+    // Создаем линии от каждого города до центральной точки
+    cities.forEach(city => {
+        if (city.lat && city.lon && centerLat && centerLon) {
+            const line = L.polyline(
+                [[city.lat, city.lon], [centerLat, centerLon]],
+                {
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    weight: 2,
+                    opacity: 0.7,
+                    dashArray: '5, 5'
+                }
+            ).addTo(map);
+            linesToCenter.push(line);
+        }
     });
 }
 
@@ -661,43 +659,42 @@ async function renderCitiesList() {
     
     const stats = getCityStats();
     
-        // Вычисляем центральную точку для расчета расстояний
-        let centerLocation = null;
-        if (cities.length > 0) {
-            centerLocation = calculateAverageLocation(cities);
-        }
+    // Вычисляем центральную точку для расчета расстояний (только для городов с координатами)
+    const citiesWithCoords = cities.filter(c => c.lat && c.lon);
+    let centerLocation = null;
+    if (citiesWithCoords.length > 0) {
+        centerLocation = calculateAverageLocation(citiesWithCoords);
+    }
     
     let html = '';
     for (const stat of stats) {
+        const isLoading = stat.city.isLoading || !stat.city.lat;
         let distance = 0;
-        let flightTime = '';
-        let price = null;
         
-        if (centerLocation) {
+        if (centerLocation && stat.city.lat && stat.city.lon) {
             distance = calculateDistance(
                 centerLocation.lat, centerLocation.lon,
                 stat.city.lat, stat.city.lon
             );
-            flightTime = calculateFlightTime(distance);
         }
         
         html += `
-        <div class="city-item">
+        <div class="city-item ${isLoading ? 'city-loading' : ''}">
             <div class="city-main-info">
                 <div class="city-header">
                     <span class="city-name">${stat.name}</span>
                     ${stat.count > 1 ? `<span class="city-count">×${stat.count}</span>` : ''}
+                    ${isLoading ? `<span class="loading-indicator">⏳</span>` : ''}
                 </div>
-                ${distance > 0 ? `
+                ${isLoading ? `
+                    <div class="city-details">
+                        <span class="city-loading-text">Загрузка координат...</span>
+                    </div>
+                ` : distance > 0 ? `
                     <div class="city-details">
                         <span class="city-distance">${distance.toFixed(0)} км</span>
-                        <span class="city-flight-time">${flightTime}</span>
                     </div>
                 ` : ''}
-            </div>
-            <div class="city-actions">
-                <button class="add-more-btn" onclick="addCityAgain('${stat.name}')" title="Добавить еще раз">+</button>
-                <button class="remove-btn" onclick="removeCityByName('${stat.name}')">Удалить</button>
             </div>
         </div>
         `;
@@ -728,6 +725,8 @@ async function removeCityByName(cityName) {
         // Если городов не осталось, возвращаем карту к начальному виду
         cityMarkers.forEach(marker => map.removeLayer(marker));
         cityMarkers = [];
+        linesToCenter.forEach(line => map.removeLayer(line));
+        linesToCenter = [];
         initMap();
         document.getElementById('resultSection').style.display = 'none';
         saveCitiesToCookie();
@@ -746,13 +745,29 @@ async function removeCityByName(cityName) {
 
 // Расчет ближайшего города
 async function calculateAverage() {
-    if (cities.length === 0) {
+    // Фильтруем только города с координатами
+    const citiesWithCoords = cities.filter(c => c.lat && c.lon);
+    if (citiesWithCoords.length === 0) {
         document.getElementById('resultSection').style.display = 'none';
+        // Удаляем линии, если нет городов
+        linesToCenter.forEach(line => map.removeLayer(line));
+        linesToCenter = [];
         return;
     }
     
-    // Вычисляем среднюю точку всех городов
+    // Проверяем, что карта инициализирована
+    if (!map) {
+        const firstCity = citiesWithCoords[0];
+        initMap([firstCity.lat, firstCity.lon], 10);
+        updateCityMarkers();
+    }
+    
+    // Вычисляем среднюю точку всех городов с координатами
     const avgLocation = calculateAverageLocation(cities);
+    
+    if (!avgLocation) {
+        return;
+    }
     
     // Получаем информацию о средней точке
     let locationInfo = await reverseGeocode(avgLocation.lat, avgLocation.lon);
@@ -785,11 +800,14 @@ async function calculateAverage() {
     // Отображаем результат
     document.getElementById('resultCity').textContent = resultLocation.city;
     document.getElementById('resultCountry').textContent = resultLocation.country;
-    document.getElementById('resultCoords').textContent = `${resultLocation.lat.toFixed(6)}, ${resultLocation.lon.toFixed(6)}`;
     document.getElementById('resultSection').style.display = 'block';
     
     // Удаляем предыдущие маркеры
-    markers.forEach(marker => map.removeLayer(marker));
+    markers.forEach(marker => {
+        if (map.hasLayer(marker)) {
+            map.removeLayer(marker);
+        }
+    });
     markers = [];
     
     // Добавляем маркер центральной точки (синий)
@@ -820,10 +838,16 @@ async function calculateAverage() {
     
     markers.push(nearestMarker);
     
+    // Обновляем линии от городов до центральной точки
+    updateLinesToCenter(avgLocation.lat, avgLocation.lon);
+    
     // Обновляем границы карты для показа всех точек
     const allMarkers = [...cityMarkers, ...markers];
     const group = new L.featureGroup(allMarkers);
     map.fitBounds(group.getBounds().pad(0.1));
+    
+    // Сохраняем результат и все данные в кэш
+    saveAllData();
 }
 
 // Очистка всех данных
@@ -833,6 +857,8 @@ async function clearAll() {
     cityMarkers = [];
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
+    linesToCenter.forEach(line => map.removeLayer(line));
+    linesToCenter = [];
     
     await renderCitiesList();
     document.getElementById('resultSection').style.display = 'none';
@@ -840,87 +866,57 @@ async function clearAll() {
     
     initMap();
     
-    // Очищаем cookies
-    setCookie('cities', []);
+    // Очищаем весь кэш
+    Object.values(CACHE_KEYS).forEach(key => {
+        removeFromCache(key);
+    });
+    removeFromCache('mapApp_reverseGeocodeCache');
+    geocodeCache = {};
+    reverseGeocodeCache = {};
 }
 
 // Загрузка сохраненных данных
 async function loadSavedData() {
-    const savedCities = loadCitiesFromCookie();
-    if (savedCities && savedCities.length > 0) {
-        cities = savedCities;
+    // Загружаем все данные из кэша
+    const mapState = loadAllData();
+    
+    // Фильтруем города без координат (не сохраняем города в процессе загрузки)
+    cities = cities.filter(c => c.lat && c.lon);
+    
+    // Загружаем города
+    if (cities.length > 0) {
         await renderCitiesList();
         
-        // Инициализируем карту с первым городом
-        if (cities.length > 0) {
+        // Инициализируем карту с сохраненным состоянием или первым городом
+        if (mapState) {
+            initMap(mapState.center, mapState.zoom);
+        } else if (cities.length > 0) {
             const firstCity = cities[0];
-            initMap([firstCity.lat, firstCity.lon], 10);
-            updateCityMarkers();
-            await calculateAverage();
-        }
-    }
-}
-
-// Расчет стоимости билетов для всех городов
-async function calculatePrices() {
-    const pricesList = document.getElementById('pricesList');
-    const pricesSection = document.getElementById('pricesSection');
-    
-    if (cities.length === 0) {
-        showError('Добавьте города для расчета стоимости');
-        return;
-    }
-    
-    pricesSection.style.display = 'block';
-    pricesList.innerHTML = '<p>Загрузка цен...</p>';
-    
-    showLoading();
-    
-    try {
-        const centerLocation = calculateAverageLocation(cities);
-        const stats = getCityStats();
-        
-        let html = '';
-        
-        for (const stat of stats) {
-            const distance = calculateDistance(
-                centerLocation.lat, centerLocation.lon,
-                stat.city.lat, stat.city.lon
-            );
-            
-            if (distance > 0) {
-                const price = await getFlightPrice(
-                    'Центральная точка',
-                    stat.name,
-                    centerLocation.lat,
-                    centerLocation.lon,
-                    stat.city.lat,
-                    stat.city.lon
-                );
-                
-                const aviasalesLink = createAviasalesLink('Центральная точка', stat.name);
-                
-                html += `
-                <div class="price-item">
-                    <div class="price-city-info">
-                        <span class="price-city-name">${stat.name}</span>
-                        <span class="price-distance">${distance.toFixed(0)} км</span>
-                    </div>
-                    <div class="price-value-info">
-                        ${price ? `<span class="price-value">от ${price.toLocaleString('ru-RU')} ₽</span>` : '<span class="price-value">Цена не найдена</span>'}
-                        <a href="${aviasalesLink}" target="_blank" class="buy-ticket-btn">Купить билет</a>
-                    </div>
-                </div>
-                `;
+            if (firstCity.lat && firstCity.lon) {
+                initMap([firstCity.lat, firstCity.lon], 10);
             }
         }
         
-        pricesList.innerHTML = html || '<p>Не удалось рассчитать цены</p>';
-    } catch (error) {
-        console.error('Ошибка при расчете цен:', error);
-        pricesList.innerHTML = '<p>Ошибка при расчете цен</p>';
-    } finally {
-        hideLoading();
+        updateCityMarkers();
+        
+        // Загружаем сохраненный результат
+        const savedResult = loadFromCache(CACHE_KEYS.RESULT);
+        if (savedResult) {
+            document.getElementById('resultCity').textContent = savedResult.city;
+            document.getElementById('resultCountry').textContent = savedResult.country;
+            document.getElementById('resultSection').style.display = 'block';
+        } else {
+            // Если результата нет, пересчитываем
+            await calculateAverage();
+        }
+        
+        // Обновляем границы карты
+        if (cityMarkers.length > 0) {
+            updateMapBounds();
+        }
+    } else if (mapState) {
+        // Если есть сохраненное состояние карты, но нет городов
+        initMap(mapState.center, mapState.zoom);
     }
 }
 
@@ -932,6 +928,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Загружаем сохраненные данные
     await loadSavedData();
     
+    // Сохраняем состояние карты при изменении
+    if (map) {
+        map.on('moveend', () => {
+            saveAllData();
+        });
+        map.on('zoomend', () => {
+            saveAllData();
+        });
+    }
+    
+    // Панель всегда открыта
+    const panelContent = document.getElementById('panelContent');
+    panelContent.classList.add('visible');
+    
     // Обработчик добавления города
     document.getElementById('addCityBtn').addEventListener('click', addCity);
     document.getElementById('cityInput').addEventListener('keypress', (e) => {
@@ -940,10 +950,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     
-    // Обработчик очистки
-    document.getElementById('clearBtn').addEventListener('click', clearAll);
-    
-    // Обработчик расчета стоимости
-    document.getElementById('calculatePricesBtn').addEventListener('click', calculatePrices);
 });
 
